@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Collections;
 using System.Collections.Generic;
 using System.ComponentModel;
 using System.Data;
@@ -18,8 +19,8 @@ namespace SplashScreen
         static Thread oThread = null;
 
         //Fading
-        private double dblOpacityIncrement = .05;
-        private double dblOpacityDecrement = .08;
+        private double opacityIncrement = .05;
+        private double opacityDecrement = .08;
         private const int TIMER_INTERVAL = 50;
 
         //Status string
@@ -28,8 +29,15 @@ namespace SplashScreen
         //Status indicators
         private double completedFraction = 0.0;
         private Rectangle progressRect;
+        private double lastCompletionFraction = 0.0;
+        private double incrementPerTimerInterval = 0.015;
+        private ArrayList previousCompleteFraction_alist;
+        private ArrayList actualTimes_alist;
+        int index = 1;
 
-        private int iActualTicks; 
+        private int actualTicks;
+        private DateTime startDateTime;
+        private bool dateTimeSet;
 
         public SplashScreen()
         {
@@ -50,6 +58,7 @@ namespace SplashScreen
             }
             set
             {
+                splashScreen.lastCompletionFraction = splashScreen.completedFraction;
                 if(splashScreen != null)
                     splashScreen.completedFraction = value;
             }
@@ -66,7 +75,7 @@ namespace SplashScreen
             if (splashScreen != null) 
             { 
                 //Slowly fade
-                splashScreen.dblOpacityIncrement = -splashScreen.dblOpacityDecrement;
+                splashScreen.opacityIncrement = -splashScreen.opacityDecrement;
             }
             oThread = null; //No longer needed
             splashScreen = null; //?? Better to destroy?
@@ -88,6 +97,46 @@ namespace SplashScreen
                 System.Threading.Thread.Sleep(TIMER_INTERVAL);
         }
 
+        #region Tracking and references
+        private double ElaspedMilliseconds()
+        {
+            TimeSpan timeSpan = DateTime.Now - startDateTime;
+            return timeSpan.TotalMilliseconds;
+        }
+
+        static public void SetReferencePoint()
+        {
+            if (splashScreen == null)
+                return;
+            splashScreen.SetReferenceInternal();
+        }
+
+        private void SetReferenceInternal()
+        {
+            if(!dateTimeSet)
+            {
+                dateTimeSet = true;
+                startDateTime = DateTime.Now;
+                //Ignoring self calibration routines...
+                ReadIncrements();
+            }
+            double milliseconds = ElaspedMilliseconds();
+            actualTimes_alist.Add(milliseconds);
+            lastCompletionFraction = completedFraction;
+            completedFraction = (index > 0) ? 1 : 0;
+        }
+
+        private void ReadIncrements()
+        {
+            incrementPerTimerInterval = 0.0015;
+        }
+
+        private void StoreIncrements()
+        {
+            //To decide how to use local variables for this
+        }
+        #endregion Tracking and references
+
         private void SplashTimer_Tick(object sender, EventArgs e)
         {
             //Draw the filler rectangle
@@ -96,34 +145,43 @@ namespace SplashScreen
             int x = statusPanel.ClientRectangle.X;
             int y = statusPanel.ClientRectangle.Y;
 
-            if(dblOpacityIncrement > 0)
+            if(opacityIncrement > 0)
             {
                 if (this.Opacity < 1)
-                    this.Opacity += dblOpacityIncrement;
+                    this.Opacity += opacityIncrement;
             }
             else
             {
                 if (this.Opacity > 0)
-                    this.Opacity += dblOpacityIncrement;
+                    this.Opacity += opacityIncrement;
                 else
                     this.Close();
             }
             statusLabel.Text = statusString;
-            if (width > 0 && height > 0)
+
+            if(lastCompletionFraction < completedFraction)
             {
-                progressRect = new Rectangle(x, y, width, height);
-                if (!statusPanel.IsDisposed)
+                lastCompletionFraction += incrementPerTimerInterval;
+                width = (int)Math.Floor(statusPanel.ClientRectangle.Width * lastCompletionFraction);
+                height = statusPanel.ClientRectangle.Height;
+                x = statusPanel.ClientRectangle.X; y = statusPanel.ClientRectangle.Y;
+                if (width > 0 && height > 0) //Paint progress bar
                 {
-                    Graphics g = statusPanel.CreateGraphics();
-                    LinearGradientBrush background =
-                        new LinearGradientBrush(progressRect,
-                            Color.FromArgb(50, 50, 200),
-                            Color.FromArgb(150, 150, 255),
-                            LinearGradientMode.Horizontal);
-                    g.FillRectangle(background, progressRect);
-                    g.Dispose();
+                    progressRect = new Rectangle(x, y, width, height);
+                    if (!statusPanel.IsDisposed)
+                    {
+                        Graphics g = statusPanel.CreateGraphics();
+                        LinearGradientBrush background =
+                            new LinearGradientBrush(progressRect,
+                                Color.FromArgb(50, 50, 200),
+                                Color.FromArgb(150, 150, 255),
+                                LinearGradientMode.Horizontal);
+                        g.FillRectangle(background, progressRect);
+                        g.Dispose();
+                    }
                 }
             }
+
         }
 
         static public void SetStatus(string newStatus)
